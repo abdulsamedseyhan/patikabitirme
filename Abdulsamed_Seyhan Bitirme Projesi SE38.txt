@@ -1,0 +1,286 @@
+--Abdulsamed Seyhan Bitirme Projesi
+*&---------------------------------------------------------------------*
+*& Report ZAS_BITIRME
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zas_bitirme.
+TABLES : zas_oyunheader,
+         zas_oyunitem.
+
+TYPES: BEGIN OF zas_str001,
+         oyun_id      TYPE  int4,
+         oyun_ad      TYPE  char40,
+         yayin_tar  TYPE  datn,
+         OYUN_TUR TYPE  char30,
+       END OF ZAS_STR001.
+
+DATA: gt_data       TYPE STANDARD TABLE OF ZAS_STR001 WITH HEADER LINE,
+      gt_fcat       TYPE lvc_t_fcat,
+      gs_fcat       TYPE lvc_s_fcat,
+      gs_layout     TYPE lvc_s_layo,
+      ls_data       TYPE zas_str001,
+      gv_active_tab TYPE string,
+      gv_tcode1     TYPE tcode VALUE 'ZAS01',
+      gv_tcode2     TYPE tcode VALUE 'ZAS02',
+      lt_headert    TYPE STANDARD TABLE OF zas_oyunheader WITH HEADER LINE,
+      ls_headert    TYPE zas_oyunheader,
+      lt_itemt      TYPE STANDARD TABLE OF zas_oyunitem WITH HEADER LINE,
+      ls_itemt      TYPE zas_oyunitem.
+
+
+
+SELECTION-SCREEN BEGIN OF TABBED BLOCK tab FOR 10 LINES.
+  SELECTION-SCREEN TAB (20) tab1 USER-COMMAND push1 DEFAULT SCREEN 777.
+  SELECTION-SCREEN TAB (20) tab2 USER-COMMAND push2 DEFAULT SCREEN 888.
+SELECTION-SCREEN END OF BLOCK tab.
+
+SELECTION-SCREEN BEGIN OF SCREEN 777 AS SUBSCREEN.
+  PARAMETERS: p_oid  TYPE zas_oyunheader-oyun_id,
+              p_oad  TYPE zas_oyunheader-oyun_ad,
+              p_kid TYPE zas_oyunitem-kullanici_id,
+              p_kma TYPE zas_oyunitem-mail_adres.
+SELECTION-SCREEN END OF SCREEN 777.
+SELECTION-SCREEN BEGIN OF SCREEN 888 AS SUBSCREEN.
+  PARAMETERS: P_fname TYPE localfile .
+SELECTION-SCREEN END OF SCREEN 888.
+
+INITIALIZATION.
+  tab1 = 'TAB1'.
+  tab2 = 'TAB2'.
+
+AT SELECTION-SCREEN.
+
+*START-OF-SELECTION.
+*  IF tab-activetab = 'TAB1' AND p_oid IS NOT INITIAL AND p_oad IS NOT INITIAL AND p_kid IS NOT INITIAL AND p_kma IS NOT INITIAL .
+*    SELECT
+*      *
+*      INTO TABLE @gt_data FROM zas_oyunheader INNER JOIN zas_oyunitem
+*           ON zas_oyunheader~oyun_id EQ zas_oyunheader~oyun_id
+*      WHERE zas_oyunheader~oyun_id = @p_oid
+*    AND zas_oyunitem~kullanici_id = @p_kid.
+*
+*    CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+*      EXPORTING
+*        i_structure_name       = 'ZAS_STR001'
+*        i_client_never_display = 'X'
+*      CHANGING
+*        ct_fieldcat            = gt_fcat
+*      EXCEPTIONS
+*        inconsistent_interface = 1
+*        program_error          = 2
+*        OTHERS                 = 3.
+*    IF sy-subrc <> 0.
+*
+*    ENDIF.
+
+
+
+    CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+      EXPORTING
+        i_callback_program       = sy-repid
+        i_callback_pf_status_set = 'PF_STATUS_SET'
+        i_callback_user_command  = 'USER_COMMAND'
+        is_layout_lvc            = gs_layout
+        it_fieldcat_lvc          = gt_fcat
+        i_default                = 'X'
+        i_save                   = ' '
+      TABLES
+        t_outtab                 = gt_data
+      EXCEPTIONS
+        program_error            = 1
+        OTHERS                   = 2.
+    IF sy-subrc <> 0.
+
+    ENDIF.
+*  ENDIF.
+
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_fname.
+  PERFORM f4_fname.
+
+  IF tab-activetab = 'TAB2' AND p_fname IS NOT INITIAL.
+    PERFORM upload_data.
+  ELSE.
+    MESSAGE  'Data not Found!' TYPE 'S'.
+  ENDIF.
+FORM f4_fname .
+  DATA: file_table TYPE filetable,
+        file_line  TYPE file_table,
+        rc         TYPE i.
+
+  CALL METHOD cl_gui_frontend_services=>file_open_dialog
+    EXPORTING
+      default_extension       = 'xlsx'
+    CHANGING
+      file_table              = file_table
+      rc                      = rc
+    EXCEPTIONS
+      file_open_dialog_failed = 1
+      cntl_error              = 2
+      error_no_gui            = 3
+      not_supported_by_gui    = 4
+      OTHERS                  = 5.
+
+  READ TABLE file_table INTO file_line INDEX 1.
+  IF sy-subrc = 0.
+    p_fname = file_line-filename.
+  ENDIF.
+ENDFORM.
+
+"f4_fname
+
+FORM upload_data .
+  DATA:lt_file  LIKE alsmex_tabline OCCURS 0 WITH HEADER LINE.
+
+  CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE'
+    EXPORTING
+      filename                = p_fname
+      i_begin_col             = 1
+      i_begin_row             = 2
+      i_end_col               = 12
+      i_end_row               = 1000
+    TABLES
+      intern                  = lt_file
+    EXCEPTIONS
+      inconsistent_parameters = 1
+      upload_ole              = 2
+      OTHERS                  = 3.
+
+
+*  IF sy-subrc NE 0 OR lt_file[] IS INITIAL.
+*    MESSAGE 'Dosya Okunamadı !' TYPE 'I'.
+*  ELSE.
+*    REFRESH gt_data.
+*    LOOP AT lt_file.
+*      CASE lt_file-col.
+*        WHEN '0001'.
+*          MOVE lt_file-value TO gt_data-oyun_id.
+*        WHEN '0002'.
+*          MOVE lt_file-value TO gt_data-oyun_ad.
+*        WHEN '0003'.
+*          MOVE lt_file-value TO gt_data-yayin_tar.
+*        WHEN '0004'.
+*          MOVE lt_file-value TO gt_data-oyun_tur.
+*        WHEN '0005'.
+*          MOVE lt_file-value TO gt_data-kullanici_id.
+*        WHEN '0006'.
+*          MOVE lt_file-value TO gt_data-mail_adres.
+*        WHEN '0007'.
+*          MOVE lt_file-value TO gt_data-dog_tar.
+*      ENDCASE.
+*      AT END OF row.
+*        APPEND gt_data.
+*        CLEAR gt_data.
+*      ENDAT.
+*    ENDLOOP.
+*  ENDIF.
+
+
+  CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+    EXPORTING
+      i_structure_name       = 'ZAS_STR001'
+      i_client_never_display = 'X'
+    CHANGING
+      ct_fieldcat            = gt_fcat
+    EXCEPTIONS
+      inconsistent_interface = 1
+      program_error          = 2
+      OTHERS                 = 3.
+  IF sy-subrc <> 0.
+    WRITE : 'Bir hata oluştu'.
+  ENDIF.
+
+
+  LOOP AT gt_fcat INTO gs_fcat.
+    CASE gs_fcat-fieldname.
+      WHEN 'SERVIS_ID'.
+        gs_fcat-outputlen = 10.
+      WHEN 'SERVIS_KAYIT'.
+        gs_fcat-outputlen = 10.
+      WHEN 'SERVIS_PK'.
+        gs_fcat-outputlen = 20.
+      WHEN 'SERVIS_ISLEM'.
+        gs_fcat-outputlen = 20.
+    ENDCASE.
+
+    MODIFY gt_fcat FROM gs_fcat TRANSPORTING outputlen.
+  ENDLOOP.
+
+
+
+  " Adım 5: ALV Grid ekranını görüntüleme
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'PF_STATUS_SET'
+      i_callback_user_command  = 'USER_COMMAND'
+      is_layout_lvc            = gs_layout
+      it_fieldcat_lvc          = gt_fcat
+      i_default                = 'X'
+      i_save                   = ' '
+    TABLES
+      t_outtab                 = gt_data.
+
+  IF sy-subrc <> 0.
+    " Hata yönetimi
+  ENDIF.
+
+ENDFORM.
+
+
+FORM pf_status_set USING p_extab TYPE slis_t_extab.
+  SET PF-STATUS 'ZSTANDARD3'.
+ENDFORM.
+
+FORM user_command USING r_ucomm     LIKE sy-ucomm
+                        rs_selfield TYPE slis_selfield.
+
+  DATA : lv_message TYPE char200.
+  CONCATENATE sy-ucomm
+              'pressed the button.'
+              INTO lv_message
+              SEPARATED BY space.
+  MESSAGE lv_message TYPE 'I'.
+
+  CASE r_ucomm.
+    WHEN '&BACK'.
+      LEAVE TO SCREEN 0.
+    WHEN '&EXIT'.
+      LEAVE TO SCREEN 0.
+    WHEN '&BUTTON1'.
+      PERFORM save_data.
+    WHEN '&TCODE1'.
+      PERFORM run_tcode1.
+    WHEN '&TCODE2'.
+      PERFORM run_tcode2.
+    WHEN OTHERS.
+  ENDCASE.
+
+ENDFORM.
+
+
+FORM save_data.
+
+  LOOP AT gt_data INTO ls_data.
+    MOVE-CORRESPONDING ls_data TO ls_headert.
+    APPEND ls_headert TO lt_headert.
+  ENDLOOP.
+
+  LOOP AT gt_data INTO ls_data.
+    MOVE-CORRESPONDING ls_data TO ls_itemt.
+    APPEND ls_itemt TO lt_itemt.
+  ENDLOOP.
+
+  MODIFY zas_oyunheader FROM TABLE lt_headert[].
+  MODIFY zas_oyunitem FROM TABLE lt_itemt[].
+
+ENDFORM.
+
+FORM run_tcode1.
+  CALL TRANSACTION gv_tcode1.
+ENDFORM.
+
+FORM run_tcode2.
+  CALL TRANSACTION gv_tcode2.
+ENDFORM.
